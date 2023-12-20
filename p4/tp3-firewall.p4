@@ -133,7 +133,6 @@ parser MyParser(packet_in packet,
     }
     state parse_udp {
     packet.extract(hdr.udp);
-    // Adicione a lógica necessária para extrair campos do cabeçalho UDP, se necessário.
     transition accept;
 }
 
