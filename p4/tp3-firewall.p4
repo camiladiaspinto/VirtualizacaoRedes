@@ -216,7 +216,7 @@ control MyIngress(inout headers hdr,
     
     
     apply {
-        if (hdr.ipv4.isValid()) {
+        if (hdr.ipv4.isValid() && hdr.tcp.isValid()) {
         ipv4_lpm.apply();
         src_mac.apply();
         dst_mac.apply();
