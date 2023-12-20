@@ -66,6 +66,12 @@ header tcp_t {
     bit<16> checksum;
     bit<16> urgentPtr;
 }
+header udp_t {
+    bit<16> srcPort;
+    bit<16> dstPort;
+    bit<16> length;
+    bit<16> checksum;
+}
 
 /**
 * You can use this structure to pass 
@@ -81,6 +87,7 @@ struct headers {
     ethernet_t   ethernet;
     ipv4_t       ipv4;
     tcp_t        tcp;
+    udp_t        udp;
 }
 
 /*************************************************************************
@@ -113,6 +120,7 @@ parser MyParser(packet_in packet,
         packet.extract(hdr.ipv4); //extrai o IPv4 header
         transition select(hdr.ipv4.protocol) { //verifica que protocolo é (definido como campo protocol no header:pode ser tcp, udp ,ect)
             TYPE_TCP: parse_tcp;  // If the protocol is TCP, transition to parse_tcp state, type_tcp é 0x6
+            TYPE_UDP: parse_udp;
             default: accept;
     }
 }
@@ -123,6 +131,11 @@ parser MyParser(packet_in packet,
         transition accept;
 
     }
+    state parse_udp {
+    packet.extract(hdr.udp);
+    // Adicione a lógica necessária para extrair campos do cabeçalho UDP, se necessário.
+    transition accept;
+}
 
 }
 
@@ -186,12 +199,6 @@ control MyIngress(inout headers hdr,
     default_action = drop;
     }
 
-    action allow(ip4Addr_t next_hop, egressSpec_t port) {
-        // Encaminha o pacote  
-        ipv4_fwd(next_hop, port);
-        //penso que tenho de chamar os rewrite mac de destino e origem 
-    }
-
 
     table tcp_filter {
         key={ 
@@ -201,11 +208,26 @@ control MyIngress(inout headers hdr,
             hdr.tcp.dstPort : range;
         }
         actions = { 
-            allow;
+            NoAction;
             drop;
         }
         default_action = drop;
     }
+
+    table udp_filter {
+    key = {
+        hdr.ipv4.srcAddr : exact;
+        hdr.ipv4.dstAddr : exact;
+        hdr.udp.srcPort  : range;
+        hdr.udp.dstPort : range;
+    }
+    actions = {
+        drop;
+    }
+    default_action = drop;
+}
+
+
 
 
     /**
@@ -214,17 +236,19 @@ control MyIngress(inout headers hdr,
     */
 
     
-    
     apply {
-        if (hdr.ipv4.isValid() && hdr.tcp.isValid()) {
-        ipv4_lpm.apply();
-        src_mac.apply();
-        dst_mac.apply();
-        tcp_filter.apply();
+        if (hdr.ipv4.isValid()) {
+            if (hdr.udp.isValid()) {
+                udp_filter.apply();
+            } else if (hdr.tcp.isValid()) {
+                ipv4_lpm.apply();
+                src_mac.apply();
+                dst_mac.apply();
+                tcp_filter.apply();
+            }
         }
     }
 }
-
 /*************************************************************************
 ****************  E G R E S S   P R O C E S S I N G   *******************
 *************************************************************************/
@@ -269,6 +293,7 @@ control MyDeparser(packet_out packet, in headers hdr) {
         packet.emit(hdr.ethernet);
         packet.emit(hdr.ipv4);
         packet.emit(hdr.tcp);
+        packet.emit(hdr.udp);
     }
 }
 
